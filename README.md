@@ -1,5 +1,7 @@
 # vTrades dApp - Blockchain Frontend Integration
 
+### deployed on - https://thesalmankhxn-v-trades-blockchain.vercel.app/
+
 A decentralized application (dApp) built with Next.js, featuring MetaMask wallet integration, smart contract interactions, and state management using Zustand with localStorage persistence.
 
 ## 🚀 Features
@@ -11,8 +13,9 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 - **Network Information**: Displays current network and chain ID
 - **Event Handling**: Automatically handles wallet and network changes
 - **Session Persistence**: Wallet connection persists across browser sessions using localStorage
-- **Auto-Reconnection**: Automatically reconnects to previously connected wallet on page reload
+- **Manual Reconnection**: Option to reconnect to previously connected wallet without popup
 - **Session Management**: Configurable session timeouts and session validation
+- **Connection Troubleshooting**: Built-in tools to resolve stuck connections and pending requests
 
 ### Smart Contract Interaction
 - **ERC-20 Token Support**: Interact with any ERC-20 token contract
@@ -29,6 +32,7 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 - **Loading States**: Visual feedback during wallet operations
 - **Session Validation**: Automatic session timeout and validation
 - **Data Cleanup**: Easy clearing of stored wallet data
+- **Connection Recovery**: Tools to handle stuck connections and pending requests
 
 ## 🛠️ Tech Stack
 
@@ -72,16 +76,40 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 ### Connecting Your Wallet
 
 1. Click the "Connect Wallet" button
-2. Approve the connection in MetaMask
-3. Your wallet address and network information will be displayed
-4. **Session Persistence**: Your connection will be automatically restored on future visits
+2. **MetaMask Popup**: A MetaMask popup will appear requesting permission to connect
+3. Approve the connection in MetaMask
+4. Your wallet address and network information will be displayed
+5. **Session Persistence**: Your connection will be automatically restored on future visits
+
+### Connection Options
+
+- **Fresh Connection**: Click "Connect Wallet" to trigger the MetaMask popup
+- **Reconnection**: If you have a valid session, click "Reconnect" to restore connection without popup
+- **Clear Stuck Connection**: Use "Clear Stuck Connection" button if you encounter pending request errors
 
 ### Session Management
 
-- **Auto-Reconnection**: The app automatically reconnects to your wallet when you return
+- **Manual Reconnection**: Use the "Reconnect" button to restore previous connections
 - **Session Timeout**: Sessions expire after 24 hours by default (configurable)
 - **Clear Data**: Use the "Clear Stored Data" button to remove all stored wallet information
 - **Session Status**: View your current session status and remaining time
+
+### Troubleshooting Connection Issues
+
+The dApp includes built-in troubleshooting for common connection problems:
+
+#### Pending Request Error
+If you see "MetaMask connection request is already pending":
+1. Click the "Clear Stuck Connection" button
+2. Check MetaMask for any pending requests
+3. Close other tabs with the same dApp
+4. Try connecting again
+
+#### General Connection Issues
+- Ensure MetaMask is unlocked
+- Check for multiple tabs with the dApp
+- Refresh the page and try again
+- Verify you're on the correct network in MetaMask
 
 ### Interacting with Smart Contracts
 
@@ -105,11 +133,11 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 │   ├── page.tsx           # Main page
 │   └── globals.css        # Global styles
 ├── components/            # React components
-│   ├── wallet-connect.tsx # Wallet connection component
-│   ├── smart-contract-demo.tsx # Smart contract demo
+│   ├── wallet-connect.tsx # Wallet connection component with troubleshooting
+│   ├── smart-contract-info.tsx # Smart contract demo
 │   └── ui/               # UI components (Radix UI)
 ├── store/                # State management
-│   └── wallet-store.ts   # Zustand wallet store with persistence
+│   └── wallet-store.ts   # Zustand wallet store with persistence and error handling
 ├── lib/                  # Utility functions
 │   ├── utils.ts          # General utilities including localStorage helpers
 │   └── ethereum-utils.ts # Ethereum-specific utilities
@@ -120,18 +148,22 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 
 ### Wallet Store (`store/wallet-store.ts`)
 - Manages wallet connection state with localStorage persistence
-- Handles MetaMask integration and auto-reconnection
-- Provides wallet actions (connect, disconnect, update)
+- Handles MetaMask integration with proper popup behavior
+- Provides wallet actions (connect, disconnect, update, reconnect)
 - Session management with configurable timeouts
 - Automatic cleanup of expired sessions
+- **Error Handling**: Comprehensive error handling for MetaMask connection issues
+- **Connection Recovery**: Methods to clear stuck connections and pending requests
 
 ### Wallet Connect Component (`components/wallet-connect.tsx`)
 - Displays wallet connection status and session information
-- Provides connect/disconnect functionality
+- Provides connect/disconnect functionality with MetaMask popup
 - Shows wallet address, network information, and session details
 - Includes session management controls
+- **Troubleshooting UI**: Built-in tools for resolving connection issues
+- **Error Guidance**: Helpful error messages and troubleshooting tips
 
-### Smart Contract Demo (`components/smart-contract-demo.tsx`)
+### Smart Contract Demo (`components/smart-contract-info.tsx`)
 - Demonstrates smart contract interactions
 - Supports ERC-20 token operations
 - Includes ETH transfer functionality
@@ -150,6 +182,7 @@ A decentralized application (dApp) built with Next.js, featuring MetaMask wallet
 - **Session Timeouts**: Automatic session expiration for security
 - **Data Cleanup**: Easy removal of stored wallet data
 - **Error Handling**: Comprehensive error handling for failed operations
+- **Connection Security**: Proper handling of MetaMask connection states
 
 ## 🚨 Error Handling
 
@@ -162,6 +195,15 @@ The dApp includes comprehensive error handling for:
 - Network switching errors
 - Session expiration
 - localStorage access issues
+- **Pending connection requests** (MetaMask error -32002)
+- **User rejected connections** (MetaMask error 4001)
+- **Stuck connections** and connection state issues
+
+### Error Recovery Features
+- **Clear Stuck Connection**: Button to reset connection state
+- **Troubleshooting Guidance**: Step-by-step instructions for common issues
+- **Error-Specific Messages**: Clear, actionable error messages
+- **Connection State Management**: Proper cleanup of failed connections
 
 ## 🔄 State Management
 
@@ -170,14 +212,14 @@ The application uses Zustand with persistence middleware for state management:
 ### Persistence Features:
 - **localStorage Integration**: Automatic saving and restoration of wallet state
 - **Session Management**: Configurable session timeouts (default: 24 hours)
-- **Auto-Reconnection**: Seamless reconnection on page reload
+- **Manual Reconnection**: Option to reconnect without triggering popup
 - **Data Validation**: Automatic cleanup of invalid or expired sessions
 - **Selective Persistence**: Only persists serializable data (excludes provider/signer)
 
 ### State Structure:
 - **Wallet State**: Connection status, address, network, session info
 - **Loading States**: Visual feedback during operations
-- **Error States**: Error message handling
+- **Error States**: Error message handling with recovery options
 - **Session Data**: Connection timestamp and timeout settings
 
 ## 📱 Responsive Design
@@ -194,6 +236,7 @@ The dApp is fully responsive and works on:
 - **Toast Notifications**: Success and error notifications
 - **Responsive Layout**: Adapts to different screen sizes
 - **Session Information**: Clear display of session status and remaining time
+- **Troubleshooting UI**: Built-in help for connection issues
 - **Accessibility**: Built with accessibility in mind
 
 ## 🔧 Configuration
@@ -221,20 +264,26 @@ The dApp works with any Ethereum-compatible network. For testing, use:
 ### Test Tokens
 Use test ERC-20 tokens available on test networks for token transfer testing.
 
-### Session Testing
-- Test auto-reconnection by refreshing the page
+### Connection Testing
+- Test MetaMask popup behavior with fresh connections
+- Test manual reconnection without popup
 - Test session expiration by waiting for timeout
 - Test data clearing functionality
 - Test MetaMask account switching
+- Test error recovery with stuck connections
 
-## 🎨 UI/UX Features
+## 🆕 Recent Updates
 
-- **Modern Design**: Clean, modern interface using Tailwind CSS
-- **Loading Indicators**: Visual feedback during operations
-- **Toast Notifications**: Success and error notifications
-- **Responsive Layout**: Adapts to different screen sizes
-- **Session Information**: Clear display of session status and remaining time
-- **Accessibility**: Built with accessibility in mind
+### MetaMask Connection Improvements
+- **Proper Popup Behavior**: Connect Wallet button now always triggers MetaMask popup for fresh connections
+- **Manual Reconnection**: Added "Reconnect" button for restoring previous connections without popup
+- **Error Handling**: Enhanced error handling for pending requests and connection issues
+- **Troubleshooting Tools**: Built-in tools to resolve stuck connections and pending requests
+
+### Error Recovery Features
+- **Clear Stuck Connection**: Button to reset connection state and clear pending requests
+- **Error-Specific Guidance**: Different troubleshooting steps for different error types
+- **User-Friendly Messages**: Clear, actionable error messages instead of cryptic errors
 
 ## 🤝 Contributing
 
@@ -257,4 +306,4 @@ For support or questions:
 
 ---
 
-**Built with ❤️ using Next.js, Ethers.js, and Zustand**
+**Built using Next.js, Ethers.js, and Zustand**
