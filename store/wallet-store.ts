@@ -50,10 +50,14 @@ interface WalletActions {
   clearError: () => void;
   /** Initialize wallet from stored state */
   initializeWallet: () => Promise<void>;
+  /** Manually attempt to reconnect to previously connected wallet */
+  attemptReconnection: () => Promise<void>;
   /** Set session timeout */
   setSessionTimeout: (timeout: number) => void;
   /** Clear all stored wallet data */
   clearStoredData: () => void;
+  /** Clear stuck connections and reset wallet state */
+  clearStuckConnection: () => void;
 }
 
 /**
@@ -98,6 +102,29 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       },
 
       /**
+       * Clear stuck connections and reset wallet state
+       * Useful when MetaMask has pending requests
+       */
+      clearStuckConnection: () => {
+        // Remove event listeners
+        if (window.ethereum) {
+          window.ethereum.removeListener(
+            "accountsChanged",
+            get().updateWalletState
+          );
+          window.ethereum.removeListener(
+            "chainChanged",
+            get().updateWalletState
+          );
+        }
+
+        // Clear all data
+        get().clearStoredData();
+
+        console.log("Cleared stuck connection and reset wallet state");
+      },
+
+      /**
        * Initialize wallet from stored state
        * Attempts to reconnect if previously connected
        */
@@ -118,9 +145,10 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                 return;
               }
 
-              // Check if accounts are still available
+              // Check if accounts are still available WITHOUT requesting access
+              // This prevents the popup from appearing during auto-reconnection
               const accounts = (await window.ethereum.request({
-                method: "eth_accounts",
+                method: "eth_accounts", // Use eth_accounts instead of eth_requestAccounts
               })) as string[];
 
               if (accounts && accounts.length > 0) {
@@ -186,45 +214,102 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             );
           }
 
-          // Request account access
+          // Check if there's already a pending request
           const accounts = (await window.ethereum.request({
-            method: "eth_requestAccounts",
+            method: "eth_accounts",
           })) as string[];
 
-          if (!accounts || accounts.length === 0) {
-            throw new Error(
-              "No accounts found. Please connect your MetaMask wallet."
-            );
+          // If accounts are already available, use them
+          if (accounts && accounts.length > 0) {
+            console.log("Accounts already available, connecting without popup");
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+            const network = await provider.getNetwork();
+
+            const shortenedAddress = `${address.slice(0, 6)}...${address.slice(
+              -4
+            )}`;
+
+            set({
+              address: shortenedAddress,
+              fullAddress: address,
+              network: {
+                name: network.name,
+                chainId: Number(network.chainId),
+              },
+              isConnected: true,
+              provider,
+              signer,
+              isLoading: false,
+              lastConnectedAt: Date.now(),
+            });
+
+            // Set up event listeners for wallet changes
+            window.ethereum.on("accountsChanged", get().updateWalletState);
+            window.ethereum.on("chainChanged", get().updateWalletState);
+            return;
           }
 
-          // Create provider and signer
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const signer = await provider.getSigner();
-          const address = await signer.getAddress();
-          const network = await provider.getNetwork();
+          // Request account access with proper error handling
+          try {
+            const requestedAccounts = (await window.ethereum.request({
+              method: "eth_requestAccounts",
+            })) as string[];
 
-          // Format address for display (shortened version)
-          const shortenedAddress = `${address.slice(0, 6)}...${address.slice(
-            -4
-          )}`;
+            if (!requestedAccounts || requestedAccounts.length === 0) {
+              throw new Error(
+                "No accounts found. Please connect your MetaMask wallet."
+              );
+            }
 
-          set({
-            address: shortenedAddress,
-            fullAddress: address,
-            network: {
-              name: network.name,
-              chainId: Number(network.chainId),
-            },
-            isConnected: true,
-            provider,
-            signer,
-            isLoading: false,
-            lastConnectedAt: Date.now(),
-          });
+            // Create provider and signer
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+            const network = await provider.getNetwork();
 
-          // Set up event listeners for wallet changes
-          window.ethereum.on("accountsChanged", get().updateWalletState);
-          window.ethereum.on("chainChanged", get().updateWalletState);
+            // Format address for display (shortened version)
+            const shortenedAddress = `${address.slice(0, 6)}...${address.slice(
+              -4
+            )}`;
+
+            set({
+              address: shortenedAddress,
+              fullAddress: address,
+              network: {
+                name: network.name,
+                chainId: Number(network.chainId),
+              },
+              isConnected: true,
+              provider,
+              signer,
+              isLoading: false,
+              lastConnectedAt: Date.now(),
+            });
+
+            // Set up event listeners for wallet changes
+            window.ethereum.on("accountsChanged", get().updateWalletState);
+            window.ethereum.on("chainChanged", get().updateWalletState);
+          } catch (requestError: unknown) {
+            // Handle specific MetaMask errors
+            const error = requestError as { code?: number; message?: string };
+            if (error.code === -32002) {
+              throw new Error(
+                "MetaMask connection request is already pending. Please check your MetaMask extension and approve the connection request."
+              );
+            } else if (error.code === 4001) {
+              throw new Error(
+                "Connection rejected by user. Please try again and approve the connection in MetaMask."
+              );
+            } else {
+              throw new Error(
+                `Failed to request account access: ${
+                  error.message || String(requestError)
+                }`
+              );
+            }
+          }
         } catch (error) {
           console.error("Error connecting wallet:", error);
           set({
@@ -308,6 +393,78 @@ export const useWalletStore = create<WalletState & WalletActions>()(
        * Clear error message
        */
       clearError: () => set({ error: null }),
+
+      /**
+       * Manually attempt to reconnect to previously connected wallet
+       */
+      attemptReconnection: async () => {
+        const { isConnected, lastConnectedAt, sessionTimeout } = get();
+
+        if (isConnected && lastConnectedAt) {
+          if (isWalletSessionValid(lastConnectedAt, sessionTimeout)) {
+            try {
+              set({ isLoading: true });
+
+              // Check if MetaMask is available
+              if (!window.ethereum) {
+                console.log("MetaMask not available, clearing stored state");
+                get().clearStoredData();
+                return;
+              }
+
+              // Check if accounts are still available WITHOUT requesting access
+              // This prevents the popup from appearing during auto-reconnection
+              const accounts = (await window.ethereum.request({
+                method: "eth_accounts", // Use eth_accounts instead of eth_requestAccounts
+              })) as string[];
+
+              if (accounts && accounts.length > 0) {
+                // Reconnect using existing accounts
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
+                const network = await provider.getNetwork();
+
+                const shortenedAddress = `${address.slice(
+                  0,
+                  6
+                )}...${address.slice(-4)}`;
+
+                set({
+                  address: shortenedAddress,
+                  fullAddress: address,
+                  network: {
+                    name: network.name,
+                    chainId: Number(network.chainId),
+                  },
+                  isConnected: true,
+                  provider,
+                  signer,
+                  isLoading: false,
+                });
+
+                // Set up event listeners
+                window.ethereum.on("accountsChanged", get().updateWalletState);
+                window.ethereum.on("chainChanged", get().updateWalletState);
+
+                console.log("Wallet auto-reconnected successfully");
+              } else {
+                // No accounts available, clear stored state
+                console.log("No accounts available, clearing stored state");
+                get().clearStoredData();
+              }
+            } catch (error) {
+              console.error("Error during wallet reconnection:", error);
+              // Clear stored state on error
+              get().clearStoredData();
+            }
+          } else {
+            // Session expired, clear stored state
+            console.log("Wallet session expired, clearing stored state");
+            get().clearStoredData();
+          }
+        }
+      },
     }),
     {
       name: "vtrades-wallet-storage", // Unique name for localStorage key
@@ -322,11 +479,11 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         sessionTimeout: state.sessionTimeout,
       }),
       // Custom merge function to handle provider/signer restoration
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          // Initialize wallet after rehydration
-          state.initializeWallet();
-        }
+      onRehydrateStorage: () => () => {
+        // Don't auto-initialize wallet on rehydration
+        // Let users explicitly connect by clicking the "Connect Wallet" button
+        // This ensures the MetaMask popup always appears for new connections
+        console.log("Wallet store rehydrated, waiting for user to connect");
       },
     }
   )

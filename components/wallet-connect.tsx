@@ -42,6 +42,8 @@ export function WalletConnect() {
     disconnectWallet,
     clearError,
     clearStoredData,
+    attemptReconnection,
+    clearStuckConnection,
   } = useWalletStore();
 
   /**
@@ -73,11 +75,34 @@ export function WalletConnect() {
   };
 
   /**
+   * Handle manual reconnection attempt
+   */
+  const handleReconnect = async () => {
+    try {
+      await attemptReconnection();
+      toast.success("Wallet reconnected successfully!");
+    } catch (error) {
+      toast.error(`Failed to reconnect wallet: ${error}`);
+    }
+  };
+
+  /**
+   * Handle clearing stuck connections
+   */
+  const handleClearStuckConnection = () => {
+    clearStuckConnection();
+    toast.success("Stuck connection cleared. Please try connecting again.");
+  };
+
+  /**
    * Clear error when component unmounts or error changes
    */
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      // Don't show toast for pending request errors as we have a dedicated UI for them
+      if (!error.includes("pending")) {
+        toast.error(error);
+      }
       clearError();
     }
   }, [error, clearError]);
@@ -229,23 +254,39 @@ export function WalletConnect() {
         <Separator />
         <div className="flex gap-2">
           {!isConnected ? (
-            <Button
-              onClick={handleConnect}
-              disabled={isLoading || !isMetaMaskAvailable}
-              className="flex-1"
-            >
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  {getLoadingText()}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-4 w-4" />
-                  Connect Wallet
-                </div>
+            <>
+              <Button
+                onClick={handleConnect}
+                disabled={isLoading || !isMetaMaskAvailable}
+                className="flex-1"
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    {getLoadingText()}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Connect Wallet
+                  </div>
+                )}
+              </Button>
+              {/* Show reconnection button if there's valid session data */}
+              {sessionInfo && sessionInfo.isValid && (
+                <Button
+                  onClick={handleReconnect}
+                  variant="outline"
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Reconnect
+                  </div>
+                </Button>
               )}
-            </Button>
+            </>
           ) : (
             <Button
               onClick={handleDisconnect}
@@ -301,6 +342,50 @@ export function WalletConnect() {
                 <p className="text-xs mt-1">
                   Restoring your previous wallet connection...
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Connection Troubleshooting */}
+        {error && error.includes("pending") && (
+          <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-orange-800">
+                <p className="font-medium">Connection Issue Detected</p>
+                <p className="text-xs mt-1 mb-2">
+                  MetaMask has a pending connection request. This can happen if
+                  you have multiple tabs open or a previous request is stuck.
+                </p>
+                <Button
+                  onClick={handleClearStuckConnection}
+                  variant="outline"
+                  size="sm"
+                  className="text-orange-700 border-orange-300 hover:bg-orange-100"
+                >
+                  Clear Stuck Connection
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* General Connection Troubleshooting */}
+        {error && !error.includes("pending") && (
+          <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-gray-800">
+                <p className="font-medium">Connection Troubleshooting</p>
+                <ul className="text-xs mt-1 space-y-1">
+                  <li>• Make sure MetaMask is unlocked</li>
+                  <li>• Check if you have multiple tabs open with this dApp</li>
+                  <li>• Try refreshing the page and connecting again</li>
+                  <li>
+                    • Ensure you&apos;re on the correct network in MetaMask
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
