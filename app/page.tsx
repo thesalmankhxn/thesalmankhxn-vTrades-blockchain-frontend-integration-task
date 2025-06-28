@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { WalletConnect } from "@/components/wallet-connect";
-import { SmartContractDemo } from "@/components/smart-contract-demo";
+import { SmartContractDemo } from "@/components/smart-contract-info";
+import { useWalletStore } from "@/store/wallet-store";
 
 /**
  * Main application page
@@ -10,10 +11,21 @@ import { SmartContractDemo } from "@/components/smart-contract-demo";
  */
 export default function Home() {
   const [isClient, setIsClient] = useState(false);
+  const { initializeWallet } = useWalletStore();
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  /**
+   * Initialize wallet when component mounts
+   * This handles auto-reconnection from localStorage
+   */
+  useEffect(() => {
+    if (isClient) {
+      initializeWallet();
+    }
+  }, [isClient, initializeWallet]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">

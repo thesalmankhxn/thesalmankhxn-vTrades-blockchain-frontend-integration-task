@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useWalletStore } from "@/store/wallet-store";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,9 +11,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { useWalletStore } from "@/store/wallet-store";
 import { Contract, ethers } from "ethers";
-import { Send, Coins, FileText, AlertCircle } from "lucide-react";
+import { AlertCircle, Coins, FileText } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -41,8 +41,6 @@ const ERC20_ABI = [
 export function SmartContractDemo() {
   const { signer, isConnected, address } = useWalletStore();
   const [contractAddress, setContractAddress] = useState("");
-  const [recipientAddress, setRecipientAddress] = useState("");
-  const [amount, setAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [contractInfo, setContractInfo] = useState<{
     name: string;
@@ -61,18 +59,60 @@ export function SmartContractDemo() {
       return;
     }
 
+    // Validate contract address format
+    if (!ethers.isAddress(contractAddress)) {
+      toast.error("Please enter a valid contract address");
+      return;
+    }
+
     try {
       setIsLoading(true);
       const contract = new Contract(contractAddress, ERC20_ABI, signer);
 
-      // Get contract information
-      const [name, symbol, decimals, totalSupply, balance] = await Promise.all([
-        contract.name(),
-        contract.symbol(),
-        contract.decimals(),
-        contract.totalSupply(),
-        contract.balanceOf(await signer.getAddress()),
-      ]);
+      // First check if the contract exists by getting its code
+      const code = await signer.provider?.getCode(contractAddress);
+      if (code === "0x") {
+        toast.error("No contract found at this address");
+        return;
+      }
+
+      // Try to get contract information with individual error handling
+      let name, symbol, decimals, totalSupply, balance;
+
+      try {
+        name = await contract.name();
+      } catch (error) {
+        console.warn("Contract doesn't have name() function:", error);
+        name = "Unknown";
+      }
+
+      try {
+        symbol = await contract.symbol();
+      } catch (error) {
+        console.warn("Contract doesn't have symbol() function:", error);
+        symbol = "???";
+      }
+
+      try {
+        decimals = await contract.decimals();
+      } catch (error) {
+        console.warn("Contract doesn't have decimals() function:", error);
+        decimals = 18; // Default to 18 decimals
+      }
+
+      try {
+        totalSupply = await contract.totalSupply();
+      } catch (error) {
+        console.warn("Contract doesn't have totalSupply() function:", error);
+        totalSupply = ethers.parseUnits("0", decimals);
+      }
+
+      try {
+        balance = await contract.balanceOf(await signer.getAddress());
+      } catch (error) {
+        console.warn("Contract doesn't have balanceOf() function:", error);
+        balance = ethers.parseUnits("0", decimals);
+      }
 
       setContractInfo({
         name,
@@ -82,108 +122,31 @@ export function SmartContractDemo() {
         balance: ethers.formatUnits(balance, decimals),
       });
 
-      toast.success("Contract information retrieved successfully!");
+      // Check if this is actually an ERC-20 token
+      if (name === "Unknown" && symbol === "???") {
+        toast.warning("This contract may not be a standard ERC-20 token");
+      } else {
+        toast.success("Contract information retrieved successfully!");
+      }
     } catch (error) {
       console.error("Error getting contract info:", error);
-      toast.error(
-        "Failed to get contract information. Please check the contract address."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  /**
-   * Send tokens to another address
-   */
-  const sendTokens = async () => {
-    if (!signer || !contractAddress || !recipientAddress || !amount) {
-      toast.error("Please fill in all fields");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      const contract = new Contract(contractAddress, ERC20_ABI, signer);
-
-      // Convert amount to wei based on token decimals
-      const decimals = await contract.decimals();
-      const amountInWei = ethers.parseUnits(amount, decimals);
-
-      // Send transaction
-      const tx = await contract.transfer(recipientAddress, amountInWei);
-
-      toast.success("Transaction sent! Waiting for confirmation...");
-
-      // Wait for transaction confirmation
-      const receipt = await tx.wait();
-
-      if (receipt) {
-        toast.success(
-          `Transaction confirmed! Hash: ${receipt.hash.slice(0, 10)}...`
-        );
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes("execution reverted")) {
+          toast.error(
+            "Contract call reverted. This may not be an ERC-20 token."
+          );
+        } else if (error.message.includes("network")) {
+          toast.error("Network error. Please check your connection.");
+        } else {
+          toast.error(
+            "Failed to get contract information. Please check the contract address."
+          );
+        }
       } else {
-        toast.success("Transaction sent successfully!");
+        toast.error("An unexpected error occurred");
       }
-
-      // Refresh contract info
-      await getContractInfo();
-
-      // Clear form
-      setRecipientAddress("");
-      setAmount("");
-    } catch (error) {
-      console.error("Error sending tokens:", error);
-      toast.error(
-        "Failed to send tokens. Please check the details and try again."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * Send ETH to another address
-   */
-  const sendETH = async () => {
-    if (!signer || !recipientAddress || !amount) {
-      toast.error("Please fill in recipient address and amount");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-
-      // Convert amount to wei
-      const amountInWei = ethers.parseEther(amount);
-
-      // Send transaction
-      const tx = await signer.sendTransaction({
-        to: recipientAddress,
-        value: amountInWei,
-      });
-
-      toast.success("ETH transaction sent! Waiting for confirmation...");
-
-      // Wait for transaction confirmation
-      const receipt = await tx.wait();
-
-      if (receipt) {
-        toast.success(
-          `ETH transaction confirmed! Hash: ${receipt.hash.slice(0, 10)}...`
-        );
-      } else {
-        toast.success("ETH transaction sent successfully!");
-      }
-
-      // Clear form
-      setRecipientAddress("");
-      setAmount("");
-    } catch (error) {
-      console.error("Error sending ETH:", error);
-      toast.error(
-        "Failed to send ETH. Please check the details and try again."
-      );
     } finally {
       setIsLoading(false);
     }
@@ -262,64 +225,6 @@ export function SmartContractDemo() {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Token Transfer Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Send className="h-5 w-5" />
-            Token Transfer
-          </CardTitle>
-          <CardDescription>
-            Transfer ERC-20 tokens to another address
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="recipient">Recipient Address</Label>
-              <Input
-                id="recipient"
-                placeholder="0x..."
-                value={recipientAddress}
-                onChange={(e) => setRecipientAddress(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder="0.0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              onClick={sendTokens}
-              disabled={
-                isLoading || !contractAddress || !recipientAddress || !amount
-              }
-              className="flex-1"
-            >
-              {isLoading
-                ? "Sending..."
-                : `Send ${contractInfo?.symbol || "Tokens"}`}
-            </Button>
-            <Button
-              onClick={sendETH}
-              disabled={isLoading || !recipientAddress || !amount}
-              variant="outline"
-              className="flex-1"
-            >
-              {isLoading ? "Sending..." : "Send ETH"}
-            </Button>
-          </div>
         </CardContent>
       </Card>
 

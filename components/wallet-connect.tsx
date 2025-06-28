@@ -12,8 +12,17 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Wallet, LogOut, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Wallet,
+  LogOut,
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw,
+  Trash2,
+  Clock,
+} from "lucide-react";
 import { toast } from "sonner";
+import { isWalletSessionValid } from "@/lib/utils";
 
 /**
  * Wallet connection component
@@ -27,9 +36,12 @@ export function WalletConnect() {
     isConnected,
     isLoading,
     error,
+    lastConnectedAt,
+    sessionTimeout,
     connectWallet,
     disconnectWallet,
     clearError,
+    clearStoredData,
   } = useWalletStore();
 
   /**
@@ -53,6 +65,14 @@ export function WalletConnect() {
   };
 
   /**
+   * Handle clearing stored data
+   */
+  const handleClearStoredData = () => {
+    clearStoredData();
+    toast.success("Stored wallet data cleared");
+  };
+
+  /**
    * Clear error when component unmounts or error changes
    */
   useEffect(() => {
@@ -65,6 +85,35 @@ export function WalletConnect() {
   // Check if we're in browser environment
   const isBrowser = typeof window !== "undefined";
   const isMetaMaskAvailable = isBrowser && !!window.ethereum;
+
+  // Determine loading text based on context
+  const getLoadingText = () => {
+    if (isLoading && !isConnected) {
+      return "Connecting...";
+    } else if (isLoading && isConnected) {
+      return "Reconnecting...";
+    }
+    return "Connecting...";
+  };
+
+  // Calculate session info
+  const sessionInfo = lastConnectedAt
+    ? {
+        isValid: isWalletSessionValid(lastConnectedAt, sessionTimeout),
+        timeRemaining: Math.max(
+          0,
+          sessionTimeout - (Date.now() - lastConnectedAt)
+        ),
+        formattedTime: new Date(lastConnectedAt).toLocaleString(),
+      }
+    : null;
+
+  // Format remaining time
+  const formatTimeRemaining = (ms: number) => {
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -82,7 +131,17 @@ export function WalletConnect() {
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Status:</span>
           <div className="flex items-center gap-2">
-            {isConnected ? (
+            {isLoading ? (
+              <>
+                <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />
+                <Badge
+                  variant="secondary"
+                  className="bg-blue-100 text-blue-800"
+                >
+                  {isConnected ? "Reconnecting" : "Connecting"}
+                </Badge>
+              </>
+            ) : isConnected ? (
               <>
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                 <Badge
@@ -137,6 +196,35 @@ export function WalletConnect() {
           </>
         )}
 
+        {/* Session Information */}
+        {sessionInfo && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Session:</span>
+                <Badge
+                  variant="outline"
+                  className={
+                    sessionInfo.isValid ? "text-green-600" : "text-red-600"
+                  }
+                >
+                  {sessionInfo.isValid ? "Valid" : "Expired"}
+                </Badge>
+              </div>
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>Connected: {sessionInfo.formattedTime}</div>
+                {sessionInfo.isValid && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Expires in: {formatTimeRemaining(sessionInfo.timeRemaining)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Action Buttons */}
         <Separator />
         <div className="flex gap-2">
@@ -149,7 +237,7 @@ export function WalletConnect() {
               {isLoading ? (
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Connecting...
+                  {getLoadingText()}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -163,6 +251,7 @@ export function WalletConnect() {
               onClick={handleDisconnect}
               variant="outline"
               className="flex-1"
+              disabled={isLoading}
             >
               <div className="flex items-center gap-2">
                 <LogOut className="h-4 w-4" />
@@ -171,6 +260,21 @@ export function WalletConnect() {
             </Button>
           )}
         </div>
+
+        {/* Clear Stored Data Button */}
+        {(isConnected || sessionInfo) && (
+          <Button
+            onClick={handleClearStoredData}
+            variant="ghost"
+            size="sm"
+            className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4" />
+              Clear Stored Data
+            </div>
+          </Button>
+        )}
 
         {/* MetaMask Installation Notice */}
         {!isMetaMaskAvailable && (
@@ -181,6 +285,21 @@ export function WalletConnect() {
                 <p className="font-medium">MetaMask not detected</p>
                 <p className="text-xs mt-1">
                   Please install MetaMask extension to use this dApp.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-reconnection Notice */}
+        {isLoading && isConnected && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <div className="flex items-start gap-2">
+              <RefreshCw className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0 animate-spin" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium">Auto-reconnecting</p>
+                <p className="text-xs mt-1">
+                  Restoring your previous wallet connection...
                 </p>
               </div>
             </div>
