@@ -1,38 +1,10 @@
-import {
-  Home,
-  ShoppingBag,
-  Package,
-  User,
-  UserPlus,
-  ShoppingCart,
-  Heart,
-} from "lucide-react";
+import { Home, User, UserPlus } from "lucide-react";
 
 export const navigationItems = [
   {
     title: "Home",
     url: "/",
     icon: Home,
-  },
-  {
-    title: "Products",
-    url: "/products",
-    icon: Package,
-  },
-  {
-    title: "Orders",
-    url: "/my-orders",
-    icon: ShoppingBag,
-  },
-  {
-    title: "Checkout",
-    url: "/checkout",
-    icon: ShoppingCart,
-  },
-  {
-    title: "Wishlist",
-    url: "/wishlist",
-    icon: Heart,
   },
 ];
 
