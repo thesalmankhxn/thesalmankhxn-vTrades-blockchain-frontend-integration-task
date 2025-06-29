@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { WalletConnect } from "@/components/wallet-connect";
 import { SmartContractDemo } from "@/components/smart-contract-info";
+import { useWalletStore } from "@/store/wallet-store";
 
 /**
  * Main application page
@@ -10,10 +11,15 @@ import { SmartContractDemo } from "@/components/smart-contract-info";
  */
 export default function Home() {
   const [isClient, setIsClient] = useState(false);
+  const initializeWallet = useWalletStore((state) => state.initializeWallet);
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+
+    // Initialize wallet for auto-reconnection
+    // This will attempt to reconnect to MetaMask if user was previously connected
+    initializeWallet();
+  }, [initializeWallet]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
